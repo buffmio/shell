@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-Domain='boopiuu.f3322.net'
-User='eton6166'
-Password='wangguan.123'
+Domain='setDomain'
+User='setUser'
+Password='setPassword'
 GETDomainIP=$(nslookup $Domain 2>&1)
 DomainIP=$(echo "$GETDomainIP" | grep 'Address:' | tail -n1 | awk '{print $NF}')
 LocalIP="curl -s whatismyip.akamai.com"
