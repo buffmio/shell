@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+sudo yum install bind-utils
 wget -qO /usr/local/bin/ddns.sh https://raw.githubusercontent.com/oswaldlau/shell/master/ddns.sh
 read -p "动态域名:" inputDomain
 read -p "公云用户名:" inputUser
