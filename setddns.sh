@@ -4,9 +4,9 @@ wget -qO /usr/local/bin/ddns.sh https://raw.githubusercontent.com/oswaldlau/shel
 read -p "动态域名:" inputDomain
 read -p "公云用户名:" inputUser
 read -p "公云密码:" inputPassword
-sed -i '2s/setDomain/$inputDomain/g' /usr/local/bin/ddns.sh
-sed -i '3s/setUser/$inputUser/g' /usr/local/bin/ddns.sh
-sed -i '4s/setPassword/$inputPassword/g' /usr/local/bin/ddns.sh
+sed -i '2s/setDomain/'$inputDomain'/g' /usr/local/bin/ddns.sh
+sed -i '3s/setUser/'$inputUser'/g' /usr/local/bin/ddns.sh
+sed -i '4s/setPassword/'$inputPassword'/g' /usr/local/bin/ddns.sh
 
 #配置定时任务
 
