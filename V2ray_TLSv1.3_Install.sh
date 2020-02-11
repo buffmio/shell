@@ -161,7 +161,7 @@ check_service(){
     fi
 }
 
-inall_step(){
+install_step(){
   pre_install
   configure_repos
   disable_selinux
