@@ -142,7 +142,7 @@ EOF
 
 check_service(){
     ps -ef | grep -v grep | grep -i "v2ray" && ps -ef | grep -v grep | grep -i "nginx" > /dev/null 2>&1
-    if[$? -eq 0];then
+    if [$? -eq 0]; then
     clear
     echo "---------- v2ray Information ----------"
     echo -e "${green}Succ:${plain} 安装已完成"
