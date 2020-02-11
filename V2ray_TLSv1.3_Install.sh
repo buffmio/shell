@@ -14,23 +14,14 @@ pre_install(){
     echo -e "请输入Ali_Key"
     read -p "Ali_Key:" alikey
     echo -e "请输入Ali_Secret"
-    read -p "Ali_Secret" alisecret
+    read -p "Ali_Secret:" alisecret
     
 
 }
 
 configure_repos(){
     yum install epel-release -y
-    cat > /etc/yum.repos.d/wlnmp-release-centos.repo << EOF
-[wlnmp]
-name=wlnmp
-baseurl=http://mirrors.wlnmp.com/centos/$releasever/$basearch/
-enabled=1
-gpgcheck=1
-gpgkey=http://mirrors.wlnmp.com/centos/RPM-GPG-KEY-wlnmp
-EOF
-}
-
+    rpm -ivh http://mirrors.wlnmp.com/centos/wlnmp-release-centos.noarch.rpm
 # Disable selinux
 disable_selinux(){
     if [ -s /etc/selinux/config ] && grep 'SELINUX=enforcing' /etc/selinux/config; then
