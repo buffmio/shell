@@ -77,6 +77,7 @@ install_nginx() {
   yum install wnginx -y
   mkdir -p /www/wwwroot/${domain}
   mkdir -p /usr/local/nginx/ssl
+  rm -rf /usr/local/nginx/conf/vhost/demo*
   cat >/usr/local/nginx/conf/vhost/${domain}.conf <<EOF
 server {
   listen 80;
