@@ -3,6 +3,7 @@ PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:~/bin
 export PATH
 
 echo 'A1234567@b'| passwd --stdin root
+systemctl stop wondershaper
 
 yum install git -y
 
@@ -27,7 +28,9 @@ EOF
 
 systemctl daemon-reload
 systemctl enable wondershaper
-systemctl restart wondershaper
+systemctl stop wondershaper
+systemctl start wondershaper
 
-rm -rf /root/wondershaper.sh*
+
+rm -rf /root/initos.sh
 rm -rf /root/wondershaper
