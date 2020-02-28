@@ -23,7 +23,7 @@ DSPEED="102400"
 
 # Upload rate in Kbps
 #
-USPEED="3072"
+USPEED="6000"
 EOF
 
 systemctl daemon-reload
