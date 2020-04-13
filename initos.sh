@@ -10,7 +10,7 @@ git clone https://github.com/magnific0/wondershaper.git
 cd wondershaper
 make install
 
-cat > /etc/conf.d/wondershaper.conf <<EOF
+cat > /etc/systemd/wondershaper.conf <<EOF
 
 # Adapter
 IFACE="eth0"
