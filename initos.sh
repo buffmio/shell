@@ -19,7 +19,7 @@ IFACE="eth0"
 DSPEED="204800"
 
 # Upload rate in Kbps
-USPEED="7500"
+USPEED="5500"
 
 ### Separate items by whitespace:
 
