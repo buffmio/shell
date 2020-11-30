@@ -2,7 +2,7 @@
 PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:~/bin
 export PATH
 
-echo 'A1234567b@2020'| passwd --stdin root
+echo 'oswald@2020'| passwd --stdin root
 
 yum install git -y
 
