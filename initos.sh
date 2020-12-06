@@ -2,7 +2,7 @@
 PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:~/bin
 export PATH
 
-echo 'oswald@2020'| passwd --stdin root
+echo 'A1234567b@2020'| passwd --stdin root
 
 yum install git -y
 
@@ -19,7 +19,7 @@ IFACE="eth0"
 DSPEED="204800"
 
 # Upload rate in Kbps
-USPEED="5500"
+USPEED="10000"
 
 ### Separate items by whitespace:
 
