@@ -26,4 +26,6 @@ WantedBy=multi-user.target
 
 EOF
 
-systemctl start traffic.service 
+systemctl daemon-reload
+systemctl enable traffic
+systemctl start wondershaper
