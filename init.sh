@@ -12,7 +12,7 @@ make install
 
 cat > /etc/systemd/wondershaper.conf <<EOF
 
-# Adapter
+## Adapter
 IFACE="eth0"
 
 # Download rate in Kbps
