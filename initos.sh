@@ -28,4 +28,4 @@ EOF
 
 systemctl daemon-reload
 systemctl enable traffic
-systemctl start wondershaper
+systemctl start traffic
