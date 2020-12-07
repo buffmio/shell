@@ -6,7 +6,7 @@ echo 'A1234567b@2020'| passwd --stdin root
 
 yum install wget -y
 
-wget -P /opt https://raw.githubusercontent.com/buffmio/LightsailLimitTraffic/master/1000G.py
+wget -P /opt https://raw.githubusercontent.com/buffmio/LightsailLimitTraffic/master/500G.py
 
 cat > /etc/systemd/system/traffic.service <<EOF
 [Unit]
