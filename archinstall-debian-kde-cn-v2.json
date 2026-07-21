@@ -1,0 +1,103 @@
+{
+  "archinstall-language": "English",
+  "audio_config": "pipewire",
+  "bootloader_config": {
+    "bootloader": "grub",
+    "uki": false,
+    "removable": false
+  },
+  "debug": false,
+  "hostname": "arch-kde",
+  "kernels": [
+    "linux-lts"
+  ],
+  "locale_config": {
+    "kb_layout": "us",
+    "sys_enc": "UTF-8",
+    "sys_lang": "zh_CN.UTF-8"
+  },
+  "mirror_config": {
+    "custom_servers": [
+      {
+        "url": "https://mirrors.ustc.edu.cn/archlinux/$repo/os/$arch"
+      },
+      {
+        "url": "https://mirrors.tuna.tsinghua.edu.cn/archlinux/$repo/os/$arch"
+      }
+    ],
+    "mirror_regions": {},
+    "optional_repositories": [],
+    "custom_repositories": []
+  },
+  "network_config": {
+    "type": "nm"
+  },
+  "no_pkg_lookups": false,
+  "ntp": true,
+  "offline": false,
+  "packages": [
+    "dolphin",
+    "dolphin-plugins",
+    "konsole",
+    "kate",
+    "ark",
+    "okular",
+    "gwenview",
+    "kcalc",
+    "filelight",
+    "partitionmanager",
+    "kio-extras",
+    "kio-admin",
+    "ffmpegthumbs",
+    "kdegraphics-thumbnailers",
+    "firefox",
+    "libreoffice-still",
+    "libreoffice-still-zh-cn",
+    "vlc",
+    "noto-fonts",
+    "noto-fonts-cjk",
+    "noto-fonts-emoji",
+    "ttf-liberation",
+    "fcitx5-im",
+    "fcitx5-chinese-addons",
+    "fcitx5-configtool",
+    "flatpak",
+    "firewalld",
+    "fwupd",
+    "power-profiles-daemon",
+    "btrfs-progs",
+    "snapper",
+    "snap-pac",
+    "git",
+    "curl",
+    "wget",
+    "rsync",
+    "nano",
+    "vim",
+    "bash-completion",
+    "man-db",
+    "man-pages",
+    "openssh",
+    "linux-lts-headers"
+  ],
+  "parallel downloads": 5,
+  "profile_config": {
+    "profile": {
+      "main": "Desktop",
+      "details": [
+        "KDE Plasma"
+      ],
+      "custom_settings": {
+        "KDE Plasma": {
+          "plasma_flavor": "plasma-meta"
+        }
+      }
+    },
+    "gfx_driver": "AMD / ATI (open-source)",
+    "greeter": "plasma-login-manager"
+  },
+  "script": "guided",
+  "silent": false,
+  "swap": true,
+  "timezone": "Asia/Shanghai"
+}
