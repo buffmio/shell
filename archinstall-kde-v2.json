@@ -1,8 +1,5 @@
 {
   "archinstall-language": "English",
-  "audio_config": {
-    "audio": "pipewire"
-  },
   "bootloader_config": {
     "bootloader": "grub",
     "uki": false,
