@@ -19,14 +19,6 @@
     "sys_lang": "zh_CN.UTF-8"
   },
   "mirror_config": {
-    "custom_servers": [
-      {
-        "url": "https://mirrors.ustc.edu.cn/archlinux/$repo/os/$arch"
-      },
-      {
-        "url": "https://mirrors.tuna.tsinghua.edu.cn/archlinux/$repo/os/$arch"
-      }
-    ],
     "mirror_regions": {
       "China": []
     },
