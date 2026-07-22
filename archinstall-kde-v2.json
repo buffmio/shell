@@ -1,5 +1,8 @@
 {
   "archinstall-language": "English",
+  "audio_config": {
+    "audio": "pipewire"
+  },
   "bootloader_config": {
     "bootloader": "grub",
     "uki": false,
@@ -8,7 +11,7 @@
   "debug": false,
   "hostname": "arch-kde",
   "kernels": [
-    "linux-lts"
+    "linux"
   ],
   "locale_config": {
     "kb_layout": "us",
@@ -24,7 +27,9 @@
         "url": "https://mirrors.tuna.tsinghua.edu.cn/archlinux/$repo/os/$arch"
       }
     ],
-    "mirror_regions": {},
+    "mirror_regions": {
+      "China": []
+    },
     "optional_repositories": [],
     "custom_repositories": []
   },
@@ -35,49 +40,44 @@
   "ntp": true,
   "offline": false,
   "packages": [
+    "alsa-utils",
+    "ark",
+    "bash-completion",
+    "bluez-utils",
+    "cups",
+    "curl",
     "dolphin",
     "dolphin-plugins",
-    "konsole",
-    "kate",
-    "ark",
-    "okular",
-    "gwenview",
-    "kcalc",
-    "filelight",
-    "partitionmanager",
-    "kio-extras",
-    "kio-admin",
+    "fcitx5-chinese-addons",
+    "fcitx5-configtool",
+    "fcitx5-im",
     "ffmpegthumbs",
-    "kdegraphics-thumbnailers",
+    "filelight",
     "firefox",
+    "fprintd",
+    "fwupd",
+    "git",
+    "gwenview",
+    "kate",
+    "kcalc",
+    "kdegraphics-thumbnailers",
+    "kio-admin",
+    "kio-extras",
+    "konsole",
     "libreoffice-still",
     "libreoffice-still-zh-cn",
-    "vlc",
+    "man-db",
+    "man-pages",
+    "nano",
     "noto-fonts",
     "noto-fonts-cjk",
     "noto-fonts-emoji",
-    "ttf-liberation",
-    "fcitx5-im",
-    "fcitx5-chinese-addons",
-    "fcitx5-configtool",
-    "flatpak",
-    "firewalld",
-    "fwupd",
+    "okular",
+    "partitionmanager",
     "power-profiles-daemon",
-    "btrfs-progs",
-    "snapper",
-    "snap-pac",
-    "git",
-    "curl",
-    "wget",
-    "rsync",
-    "nano",
+    "ufw",
     "vim",
-    "bash-completion",
-    "man-db",
-    "man-pages",
-    "openssh",
-    "linux-lts-headers"
+    "wget"
   ],
   "parallel downloads": 5,
   "profile_config": {
@@ -97,6 +97,9 @@
   },
   "script": "guided",
   "silent": false,
-  "swap": true,
+  "swap": {
+    "enabled": true,
+    "algorithm": "zstd"
+  },
   "timezone": "Asia/Shanghai"
 }
