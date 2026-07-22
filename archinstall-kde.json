@@ -75,6 +75,7 @@
     "okular",
     "partitionmanager",
     "power-profiles-daemon",
+    "sddm-kcm",
     "ufw",
     "vim",
     "wget"
@@ -93,7 +94,7 @@
       }
     },
     "gfx_driver": "AMD / ATI (open-source)",
-    "greeter": "plasma-login-manager"
+    "greeter": "sddm"
   },
   "script": "guided",
   "silent": false,
