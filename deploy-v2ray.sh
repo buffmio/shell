@@ -1,0 +1,691 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+PROJECT_NAME="v2ray"
+CONTAINER_NAME="v2ray"
+DEFAULT_INSTALL_DIR="/opt/${PROJECT_NAME}"
+V2RAY_IMAGE="v2fly/v2fly-core:latest"
+CADDY_IMAGE="caddy:2-alpine"
+CADDY_CONTAINER_NAME="caddy"
+CADDY_DIR="/opt/caddy"
+DEFAULT_NETWORK="caddy-net"
+
+red() { printf '\033[31m%s\033[0m\n' "$*"; }
+green() { printf '\033[32m%s\033[0m\n' "$*"; }
+yellow() { printf '\033[33m%s\033[0m\n' "$*"; }
+info() { printf '[INFO] %s\n' "$*"; }
+
+die() {
+  red "[ERROR] $*"
+  exit 1
+}
+
+usage() {
+  cat <<EOF
+用法:
+  bash deploy-v2ray.sh              交互式部署或更新
+  bash deploy-v2ray.sh --upgrade    拉取最新镜像并平滑升级容器
+  bash deploy-v2ray.sh --uninstall  交互式完全卸载
+  bash deploy-v2ray.sh --help       显示帮助
+EOF
+}
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+random_hex() {
+  local bytes="${1:-16}"
+  if require_cmd openssl; then
+    openssl rand -hex "$bytes"
+    return
+  fi
+  if require_cmd od; then
+    od -An -N "$bytes" -tx1 /dev/urandom | tr -d ' \n'
+    printf '\n'
+    return
+  fi
+  die "无法生成随机值：需要 openssl 或 od。"
+}
+
+random_uuid() {
+  if require_cmd uuidgen; then
+    uuidgen | tr '[:upper:]' '[:lower:]'
+    return
+  fi
+  if [ -r /proc/sys/kernel/random/uuid ]; then
+    cat /proc/sys/kernel/random/uuid
+    return
+  fi
+
+  local h
+  h="$(random_hex 16)"
+  printf '%s-%s-4%s-%s%s-%s\n' \
+    "${h:0:8}" \
+    "${h:8:4}" \
+    "${h:13:3}" \
+    "$(printf '%x' "$((0x${h:16:1} & 3 | 8))")" \
+    "${h:17:3}" \
+    "${h:20:12}"
+}
+
+url_encode() {
+  local string="$1"
+  local length="${#string}"
+  local i char
+  for (( i = 0; i < length; i++ )); do
+    char="${string:i:1}"
+    case "$char" in
+      [a-zA-Z0-9.~_-]) printf '%s' "$char" ;;
+      '/') printf '%%2F' ;;
+      *) printf '%%%02X' "'$char" ;;
+    esac
+  done
+}
+
+prompt() {
+  local label="$1"
+  local default_value="$2"
+  local value
+
+  if [ -n "$default_value" ]; then
+    read -r -p "${label} [${default_value}]: " value
+    printf '%s' "${value:-$default_value}"
+  else
+    read -r -p "${label}: " value
+    printf '%s' "$value"
+  fi
+}
+
+prompt_yes_no() {
+  local label="$1"
+  local default_value="$2"
+  local answer
+  local suffix="[y/N]"
+
+  if [ "$default_value" = "y" ]; then
+    suffix="[Y/n]"
+  fi
+
+  read -r -p "${label} ${suffix}: " answer
+  answer="${answer:-$default_value}"
+  case "$answer" in
+    y|Y|yes|YES) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+compose_cmd() {
+  if docker compose version >/dev/null 2>&1; then
+    docker compose "$@"
+    return
+  fi
+  if require_cmd docker-compose; then
+    docker-compose "$@"
+    return
+  fi
+  die "未找到 Docker Compose。"
+}
+
+validate_domain() {
+  local domain="$1"
+  [[ "$domain" =~ ^[A-Za-z0-9.-]+$ ]] || return 1
+  [[ "$domain" == *.* ]] || return 1
+  [[ "$domain" != .* && "$domain" != *. ]] || return 1
+}
+
+validate_ws_path() {
+  local path="$1"
+  [[ "$path" == /* ]] || return 1
+  [[ "$path" != "/" ]] || return 1
+  [[ "$path" =~ ^/[A-Za-z0-9._~/-]+$ ]] || return 1
+  [[ "$path" != */ ]] || return 1
+}
+
+install_docker_debian() {
+  if [ "$(id -u)" -ne 0 ]; then
+    die "安装 Docker 需要 root 权限。请用 root 运行脚本，或先手动安装 Docker。"
+  fi
+
+  . /etc/os-release
+  case "${ID:-}" in
+    debian|ubuntu) ;;
+    *) die "自动安装 Docker 仅支持 Debian/Ubuntu，当前系统是 ${ID:-unknown}。" ;;
+  esac
+
+  info "安装 Docker Engine 和 Compose 插件..."
+  apt-get update
+  apt-get install -y ca-certificates curl gnupg
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL "https://download.docker.com/linux/${ID}/gpg" -o /etc/apt/keyrings/docker.asc
+  chmod a+r /etc/apt/keyrings/docker.asc
+
+  local codename
+  codename="${VERSION_CODENAME:-}"
+  [ -n "$codename" ] || die "无法识别系统版本代号。"
+
+  printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/%s %s stable\n' \
+    "$(dpkg --print-architecture)" "$ID" "$codename" \
+    >/etc/apt/sources.list.d/docker.list
+
+  apt-get update
+  apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  systemctl enable --now docker
+}
+
+check_docker() {
+  if ! require_cmd docker; then
+    if prompt_yes_no "未检测到 Docker，是否自动安装 Debian/Ubuntu 版 Docker" "y"; then
+      install_docker_debian
+    else
+      die "缺少 Docker，无法继续。"
+    fi
+  fi
+  compose_cmd version >/dev/null 2>&1 || die "未找到可用的 Docker Compose。"
+}
+
+ensure_caddy_and_network() {
+  local network_name="$DEFAULT_NETWORK"
+
+  if ! docker network inspect "$network_name" >/dev/null 2>&1; then
+    info "创建共享 Docker 网络: ${network_name}..."
+    docker network create "$network_name"
+  fi
+
+  mkdir -p "${CADDY_DIR}/conf.d"
+
+  if [ ! -f "${CADDY_DIR}/Caddyfile" ]; then
+    cat >"${CADDY_DIR}/Caddyfile" <<'EOF'
+import /etc/caddy/conf.d/*.caddy
+EOF
+  fi
+
+  if docker ps -a --filter "name=^/${CADDY_CONTAINER_NAME}$" --format '{{.Names}}' | grep -wq "${CADDY_CONTAINER_NAME}"; then
+    if ! docker ps --filter "name=^/${CADDY_CONTAINER_NAME}$" --format '{{.Names}}' | grep -wq "${CADDY_CONTAINER_NAME}"; then
+      info "启动已存在的 ${CADDY_CONTAINER_NAME} 容器..."
+      docker start "${CADDY_CONTAINER_NAME}"
+    fi
+
+    local caddy_nets
+    caddy_nets="$(docker inspect "${CADDY_CONTAINER_NAME}" --format '{{range $net, $v := .NetworkSettings.Networks}}{{$net}} {{end}}')"
+    if [[ ! " ${caddy_nets} " =~ " ${network_name} " ]]; then
+      info "将 ${CADDY_CONTAINER_NAME} 容器接入网络 ${network_name}..."
+      docker network connect "$network_name" "${CADDY_CONTAINER_NAME}"
+    fi
+    reload_caddy
+  else
+    info "未检测到 ${CADDY_CONTAINER_NAME} 容器，正在自动拉取并启动..."
+    docker run -d \
+      --name "${CADDY_CONTAINER_NAME}" \
+      --restart unless-stopped \
+      --network "$network_name" \
+      -p 80:80 \
+      -p 443:443 \
+      -v "${CADDY_DIR}/Caddyfile:/etc/caddy/Caddyfile:ro" \
+      -v "${CADDY_DIR}/conf.d:/etc/caddy/conf.d:ro" \
+      -v caddy_data:/data \
+      -v caddy_config:/config \
+      "$CADDY_IMAGE"
+    green "${CADDY_CONTAINER_NAME} 网关已启动。"
+  fi
+}
+
+detect_caddy_host_caddyfile() {
+  if ! docker ps -a --filter "name=^/${CADDY_CONTAINER_NAME}$" --format '{{.Names}}' | grep -wq "${CADDY_CONTAINER_NAME}"; then
+    printf '%s/Caddyfile' "$CADDY_DIR"
+    return
+  fi
+
+  # 通过 inspect 查找容器内 /etc/caddy/Caddyfile 挂载对应的宿主机真实文件路径
+  local host_path
+  host_path="$(docker inspect "${CADDY_CONTAINER_NAME}" --format '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{end}}{{end}}' 2>/dev/null || true)"
+  if [ -n "$host_path" ] && [ -f "$host_path" ]; then
+    printf '%s' "$host_path"
+    return
+  fi
+
+  if [ -f "${CADDY_DIR}/Caddyfile" ]; then
+    printf '%s/Caddyfile' "$CADDY_DIR"
+    return
+  fi
+
+  printf '%s/Caddyfile' "$CADDY_DIR"
+}
+
+render_managed_routes() {
+  local conf_d="${CADDY_DIR}/conf.d"
+  local cp_domain=""
+  local v2_domain=""
+  local v2_ws_path=""
+
+  if [ -f "${conf_d}/cliproxy.meta" ]; then
+    # shellcheck disable=SC1090
+    . "${conf_d}/cliproxy.meta"
+    cp_domain="${CLIPROXY_DOMAIN:-}"
+  fi
+
+  if [ -f "${conf_d}/v2ray.meta" ]; then
+    # shellcheck disable=SC1090
+    . "${conf_d}/v2ray.meta"
+    v2_domain="${V2RAY_DOMAIN:-}"
+    v2_ws_path="${V2RAY_WS_PATH:-}"
+  fi
+
+  if [ -n "$cp_domain" ] && [ -n "$v2_domain" ] && [ "$cp_domain" = "$v2_domain" ]; then
+    cat <<EOF
+${cp_domain} {
+	@v2ray_ws path ${v2_ws_path}
+	reverse_proxy @v2ray_ws ${CONTAINER_NAME}:10000
+
+	reverse_proxy cli-proxy-api:8317
+}
+EOF
+  else
+    if [ -n "$cp_domain" ]; then
+      cat <<EOF
+${cp_domain} {
+	reverse_proxy cli-proxy-api:8317
+}
+EOF
+    fi
+
+    if [ -n "$v2_domain" ]; then
+      cat <<EOF
+${v2_domain} {
+	@v2ray_ws path ${v2_ws_path}
+	reverse_proxy @v2ray_ws ${CONTAINER_NAME}:10000
+}
+EOF
+    fi
+  fi
+}
+
+sync_caddy_routes() {
+  local conf_d="${CADDY_DIR}/conf.d"
+  mkdir -p "$conf_d"
+
+  local active_caddyfile
+  active_caddyfile="$(detect_caddy_host_caddyfile)"
+  mkdir -p "$(dirname "$active_caddyfile")"
+  [ -f "$active_caddyfile" ] || touch "$active_caddyfile"
+
+  local generated_routes
+  generated_routes="$(render_managed_routes)"
+
+  # 如果宿主机的主配置文件是 /opt/caddy/Caddyfile，且容器包含 conf.d 挂载，则使用模块化维护
+  if [ "$active_caddyfile" = "${CADDY_DIR}/Caddyfile" ]; then
+    if ! grep -Fq "import /etc/caddy/conf.d/*.caddy" "$active_caddyfile"; then
+      cat >"$active_caddyfile" <<'EOF'
+import /etc/caddy/conf.d/*.caddy
+EOF
+    fi
+    rm -f "${conf_d}"/*.caddy
+    if [ -n "$generated_routes" ]; then
+      printf '%s\n' "$generated_routes" >"${conf_d}/managed_services.caddy"
+    fi
+  else
+    # 针对第三方或已有自定义 Caddyfile，采用无侵入的标记区块注入
+    local start_marker="# >>> STACK-MANAGED-ROUTES-BEGIN >>>"
+    local end_marker="# <<< STACK-MANAGED-ROUTES-END <<<"
+    local tmp_file
+    tmp_file="$(mktemp)"
+
+    if grep -Fq "$start_marker" "$active_caddyfile"; then
+      awk -v s="$start_marker" -v e="$end_marker" '
+        $0 ~ s { skip=1; next }
+        $0 ~ e { skip=0; next }
+        !skip { print }
+      ' "$active_caddyfile" >"$tmp_file"
+    else
+      cp "$active_caddyfile" "$tmp_file"
+    fi
+
+    if [ -n "$generated_routes" ]; then
+      {
+        printf '\n%s\n' "$start_marker"
+        printf '%s\n' "$generated_routes"
+        printf '%s\n' "$end_marker"
+      } >>"$tmp_file"
+    fi
+
+    mv "$tmp_file" "$active_caddyfile"
+  fi
+}
+
+reload_caddy() {
+  if docker ps --filter "name=^/${CADDY_CONTAINER_NAME}$" --format '{{.Names}}' | grep -wq "${CADDY_CONTAINER_NAME}"; then
+    info "重载 ${CADDY_CONTAINER_NAME} 网关配置..."
+    if ! docker exec "${CADDY_CONTAINER_NAME}" caddy reload --config /etc/caddy/Caddyfile 2>/dev/null; then
+      yellow "Caddy 热重载未立即生效，尝试重启容器..."
+      docker restart "${CADDY_CONTAINER_NAME}" >/dev/null 2>&1 || true
+    fi
+  fi
+}
+
+write_env_file() {
+  local file="$1"
+  cat >"$file" <<EOF
+DOMAIN=${DOMAIN}
+INSTALL_DIR=${INSTALL_DIR}
+V2RAY_UUID=${V2RAY_UUID}
+V2RAY_WS_PATH=${V2RAY_WS_PATH}
+DOCKER_NETWORK=${DEFAULT_NETWORK}
+EOF
+  chmod 600 "$file"
+}
+
+write_compose_file() {
+  local file="$1"
+  cat >"$file" <<EOF
+services:
+  ${CONTAINER_NAME}:
+    image: ${V2RAY_IMAGE}
+    container_name: ${CONTAINER_NAME}
+    restart: unless-stopped
+    command: run -c /etc/v2ray/config.json
+    volumes:
+      - ./config.json:/etc/v2ray/config.json:ro
+    networks:
+      - ${DEFAULT_NETWORK}
+
+networks:
+  ${DEFAULT_NETWORK}:
+    external: true
+EOF
+}
+
+write_v2ray_config() {
+  local file="$1"
+  cat >"$file" <<EOF
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "tag": "v2ray-in",
+      "listen": "0.0.0.0",
+      "port": 10000,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "${V2RAY_UUID}",
+            "flow": ""
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "ws",
+        "wsSettings": {
+          "path": "${V2RAY_WS_PATH}"
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "freedom",
+      "tag": "direct"
+    }
+  ]
+}
+EOF
+}
+
+build_vless_link() {
+  local encoded_path
+  encoded_path="$(url_encode "$V2RAY_WS_PATH")"
+  printf 'vless://%s@%s:443?type=ws&security=tls&encryption=none&path=%s&host=%s&sni=%s#v2ray-%s' \
+    "$V2RAY_UUID" \
+    "$DOMAIN" \
+    "$encoded_path" \
+    "$DOMAIN" \
+    "$DOMAIN" \
+    "$DOMAIN"
+}
+
+print_summary() {
+  local link
+  link="$(build_vless_link)"
+
+  cat <<EOF
+
+==================================================
+V2Ray 部署信息
+==================================================
+安装目录:      ${INSTALL_DIR}
+
+节点链接 (VLESS):
+  ${link}
+
+连接参数
+--------
+地址 (Address):     ${DOMAIN}
+端口 (Port):        443
+UUID:               ${V2RAY_UUID}
+路径 (Path):        ${V2RAY_WS_PATH}
+传输协议 (Network):  ws (WebSocket)
+TLS / SNI / Host:   ${DOMAIN}
+
+常用命令
+--------
+查看日志:
+  cd ${INSTALL_DIR} && docker compose logs -f
+
+重启服务:
+  cd ${INSTALL_DIR} && docker compose restart
+
+停止服务:
+  cd ${INSTALL_DIR} && docker compose down
+
+升级容器:
+  bash deploy-v2ray.sh --upgrade
+
+EOF
+}
+
+detect_installed_dir() {
+  # 1. 尝试从运行中的容器挂载获取宿主机安装目录
+  if docker ps -a --filter "name=^/${CONTAINER_NAME}$" --format '{{.Names}}' | grep -wq "${CONTAINER_NAME}"; then
+    local host_config
+    host_config="$(docker inspect "${CONTAINER_NAME}" --format '{{range .Mounts}}{{if eq .Destination "/etc/v2ray/config.json"}}{{.Source}}{{end}}{{end}}' 2>/dev/null || true)"
+    if [ -n "$host_config" ]; then
+      local candidate
+      candidate="$(dirname "$host_config")"
+      if [ -d "$candidate" ]; then
+        printf '%s' "$candidate"
+        return
+      fi
+    fi
+  fi
+
+  # 2. 检查默认目录是否存在
+  if [ -d "$DEFAULT_INSTALL_DIR" ]; then
+    printf '%s' "$DEFAULT_INSTALL_DIR"
+    return
+  fi
+
+  printf '%s' "$DEFAULT_INSTALL_DIR"
+}
+
+upgrade_service() {
+  local install_dir="$1"
+
+  cat <<'EOF'
+V2Ray 平滑升级
+==============
+保留所有已有配置与 UUID 密钥，拉取最新镜像并重新启动容器。
+
+EOF
+
+  if [ -z "$install_dir" ]; then
+    local detected_dir
+    detected_dir="$(detect_installed_dir)"
+    install_dir="$(prompt "检测到安装目录，回车确认或输入其他路径" "$detected_dir")"
+  fi
+
+  [ -n "$install_dir" ] || die "安装目录不能为空。"
+  [ -f "$install_dir/docker-compose.yml" ] || die "未在 $install_dir 找到 docker-compose.yml，请先部署。"
+
+  check_docker
+  ensure_caddy_and_network
+
+  info "拉取最新镜像: ${V2RAY_IMAGE}..."
+  (cd "$install_dir" && compose_cmd pull)
+
+  info "重新创建并启动 ${CONTAINER_NAME} 容器..."
+  (cd "$install_dir" && compose_cmd up -d --force-recreate)
+
+  reload_caddy
+
+  green "V2Ray 升级完成！容器已运行最新镜像并保留全部配置数据。"
+}
+
+uninstall_service() {
+  cat <<'EOF'
+V2Ray 卸载
+==========
+将停止并删除本服务容器、网络配置与路由，并可选择清理安装目录。
+
+EOF
+
+  local detected_dir
+  detected_dir="$(detect_installed_dir)"
+
+  if [ -d "$detected_dir" ]; then
+    INSTALL_DIR="$(prompt "检测到安装目录，回车确认或输入其他路径" "$detected_dir")"
+  else
+    INSTALL_DIR="$(prompt "请输入要卸载的安装目录，留空使用默认值" "$DEFAULT_INSTALL_DIR")"
+  fi
+
+  [ -n "$INSTALL_DIR" ] || die "安装目录不能为空。"
+
+  if [ ! -d "$INSTALL_DIR" ] && ! docker ps -a --filter "name=^/${CONTAINER_NAME}$" --format '{{.Names}}' | grep -wq "${CONTAINER_NAME}"; then
+    die "未找到安装目录 ($INSTALL_DIR) 且未检测到运行中的容器。"
+  fi
+
+  if ! prompt_yes_no "确认卸载 ${INSTALL_DIR} 及其容器服务" "y"; then
+    die "用户已取消卸载。"
+  fi
+
+  if [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
+    if require_cmd docker; then
+      info "停止并删除容器与相关卷..."
+      (cd "$INSTALL_DIR" && compose_cmd down --volumes --remove-orphans) || true
+    else
+      yellow "未检测到 Docker，跳过容器清理。"
+    fi
+  fi
+
+  if [ -f "${CADDY_DIR}/conf.d/v2ray.meta" ]; then
+    info "清理 Caddy 中的反代路由配置..."
+    rm -f "${CADDY_DIR}/conf.d/v2ray.meta"
+    sync_caddy_routes
+    reload_caddy
+  fi
+
+  if require_cmd docker && prompt_yes_no "是否同时删除 V2Ray 镜像 (${V2RAY_IMAGE})" "n"; then
+    docker image rm "$V2RAY_IMAGE" >/dev/null 2>&1 || true
+  fi
+
+  if prompt_yes_no "是否删除安装目录及其中的配置文件" "y"; then
+    rm -rf -- "$INSTALL_DIR"
+    green "安装目录已删除：$INSTALL_DIR"
+  else
+    yellow "已保留安装目录：$INSTALL_DIR"
+  fi
+
+  if require_cmd docker && [ -f "${CADDY_DIR}/conf.d/cliproxy.meta" ]; then
+    info "检测到 CLI-Proxy-API 服务仍在运行，已保留 Caddy 网关与共享网络。"
+  elif require_cmd docker && docker ps -a --filter "name=^/${CADDY_CONTAINER_NAME}$" --format '{{.Names}}' | grep -wq "${CADDY_CONTAINER_NAME}"; then
+    if prompt_yes_no "未检测到其他服务使用 Caddy，是否同时停止并删除 Caddy 网关及共享网络" "n"; then
+      info "清理 Caddy 网关..."
+      docker stop "${CADDY_CONTAINER_NAME}" >/dev/null 2>&1 || true
+      docker rm "${CADDY_CONTAINER_NAME}" >/dev/null 2>&1 || true
+      docker network rm "$DEFAULT_NETWORK" >/dev/null 2>&1 || true
+      rm -rf -- "$CADDY_DIR"
+      green "Caddy 网关与共享网络已清理。"
+    fi
+  fi
+
+  green "V2Ray 卸载流程完成。"
+}
+
+main() {
+  cat <<'EOF'
+V2Ray 独立部署向导
+==================
+独立部署 V2Ray 节点服务，自动检测并接入 Caddy 网关。
+
+EOF
+
+  local default_path
+  default_path="/$(random_hex 6)"
+
+  DOMAIN="$(prompt "请输入域名，例如 vpn.example.com" "")"
+  validate_domain "$DOMAIN" || die "域名格式不正确。"
+
+  INSTALL_DIR="$(prompt "请输入安装目录，留空使用默认值" "$DEFAULT_INSTALL_DIR")"
+  [ -n "$INSTALL_DIR" ] || die "安装目录不能为空。"
+
+  V2RAY_UUID="$(prompt "请输入连接 UUID，留空自动生成" "")"
+  V2RAY_UUID="${V2RAY_UUID:-$(random_uuid)}"
+
+  V2RAY_WS_PATH="$(prompt "请输入 WS 路径（必须以 / 开头，留空使用随机值）" "$default_path")"
+  validate_ws_path "$V2RAY_WS_PATH" || die "WS 路径必须以 / 开头，不能只填 /，只能包含字母、数字、点、下划线、短横线、波浪线和斜杠，且不能以斜杠结尾。"
+
+  check_docker
+
+  if [ -e "$INSTALL_DIR" ] && [ -n "$(find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 2>/dev/null)" ]; then
+    if ! prompt_yes_no "安装目录非空，是否覆盖同名配置文件并继续" "n"; then
+      die "用户取消。"
+    fi
+  fi
+
+  mkdir -p "${CADDY_DIR}/conf.d"
+  cat >"${CADDY_DIR}/conf.d/v2ray.meta" <<EOF
+V2RAY_DOMAIN=${DOMAIN}
+V2RAY_WS_PATH=${V2RAY_WS_PATH}
+EOF
+  sync_caddy_routes
+
+  ensure_caddy_and_network
+
+  mkdir -p "$INSTALL_DIR"
+
+  write_env_file "$INSTALL_DIR/.env"
+  write_compose_file "$INSTALL_DIR/docker-compose.yml"
+  write_v2ray_config "$INSTALL_DIR/config.json"
+  chmod 600 "$INSTALL_DIR/config.json"
+
+  if prompt_yes_no "是否现在拉取镜像并启动服务" "y"; then
+    info "启动服务..."
+    (cd "$INSTALL_DIR" && compose_cmd pull && compose_cmd up -d)
+    green "V2Ray 服务已启动。"
+  else
+    yellow "已生成配置，但尚未启动服务。"
+  fi
+
+  print_summary
+}
+
+case "${1:-}" in
+  --upgrade|-u)
+    upgrade_service "${2:-}"
+    ;;
+  --uninstall)
+    uninstall_service
+    ;;
+  --help|-h)
+    usage
+    ;;
+  "")
+    main "$@"
+    ;;
+  *)
+    usage
+    die "未知参数：$1"
+    ;;
+esac
