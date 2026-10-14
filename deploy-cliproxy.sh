@@ -404,8 +404,8 @@ print_summary() {
 CLI-Proxy-API 部署信息
 ==================================================
 安装目录:      ${INSTALL_DIR}
-Web 管理页:    https://${DOMAIN}/management.html
-API Base URL:  https://${DOMAIN}/v1
+Web 管理页:    https://${DOMAIN}:8317/management.html
+API Base URL:  https://${DOMAIN}:8317/v1
 Web 管理密钥:  ${MANAGEMENT_KEY}
 API Key:       ${API_KEY}
 (API Key 为客户端连接平台的验证密钥)
