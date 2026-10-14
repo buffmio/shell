@@ -176,8 +176,7 @@ EOF
       --name "${CADDY_CONTAINER_NAME}" \
       --restart unless-stopped \
       --network "$network_name" \
-      -p 80:80 \
-      -p 443:443 \
+      -p 8317:8317 \
       -v "${CADDY_DIR}/Caddyfile:/etc/caddy/Caddyfile:ro" \
       -v "${CADDY_DIR}/conf.d:/etc/caddy/conf.d:ro" \
       -v caddy_data:/data \
